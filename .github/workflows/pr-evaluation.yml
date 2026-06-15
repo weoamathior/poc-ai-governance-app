@@ -1,0 +1,368 @@
+# =============================================================================
+# pr-evaluation.yml
+#
+# AI-assisted pull request evaluation pipeline for poc-ai-governance-app.
+#
+# This workflow is a policy artifact, not just automation. It is written to be
+# read by a human six months from now who needs to understand exactly why each
+# decision was made. Every step is commented with its intent.
+#
+# The standards it enforces do NOT live in this repository. They live in the
+# separate `poc-ai-governance-standards` repository, and this workflow pins to a
+# specific ref of that repository (GOVERNANCE_STANDARDS_REF). Pinning to a ref
+# rather than tracking `main` is deliberate: it makes forensic replay possible.
+# For any past merge we can check out the exact ref that was active and see the
+# precise standards, prompt, schema, and auto-approve rules that produced the
+# findings recorded in the audit log.
+#
+# Configuration is supplied entirely through repository variables and secrets so
+# that the workflow body stays general:
+#   - vars.GOVERNANCE_STANDARDS_REF    git ref of the standards repo to pin to
+#   - vars.EVALUATOR_MODEL             LLM model identifier (e.g. "gpt-4o")
+#   - vars.GOVERNANCE_ESCALATION_TEAM  GitHub team slug for escalation reviews
+#   - secrets.LLM_API_KEY              API key for the LLM provider
+# =============================================================================
+
+name: PR Evaluation
+
+# Run on pull request lifecycle events. We re-evaluate on every push to the PR
+# (synchronize) and on reopen, because the set of changed files — and therefore
+# the applicable findings — can change.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# The workflow needs to read the diff, write review comments, approve PRs, and
+# request reviewers. These permissions are the minimum required for that.
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+# Pin the standards ref once here so every step references the same value and
+# the forensic guarantee holds across the whole run.
+env:
+  STANDARDS_REF: ${{ vars.GOVERNANCE_STANDARDS_REF }}
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      # ---------------------------------------------------------------------
+      # Step 1 — Check out the application repository (this repo).
+      # This gives us the PR's merge commit so later steps can inspect changed
+      # files locally if needed.
+      # ---------------------------------------------------------------------
+      - name: Checkout application repo
+        uses: actions/checkout@v4
+        with:
+          # Full history so we can diff against the base branch accurately.
+          fetch-depth: 0
+
+      # ---------------------------------------------------------------------
+      # Step 2 — Check out the standards repo at the PINNED ref.
+      # We place it in a subdirectory (.governance-standards) so it sits beside
+      # the app code without colliding with it. The ref comes from a repository
+      # variable, never hardcoded, so the active standards version is auditable
+      # and controlled outside this file.
+      # ---------------------------------------------------------------------
+      - name: Checkout governance standards (pinned ref)
+        uses: actions/checkout@v4
+        with:
+          repository: your-org/poc-ai-governance-standards
+          ref: ${{ env.STANDARDS_REF }}
+          path: .governance-standards
+          # A token with read access to the standards repo. Reuse the default
+          # token if the repo is in the same org and visible to it; otherwise
+          # supply a dedicated read token as a secret.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---------------------------------------------------------------------
+      # Step 3 — Auto-approve check.
+      # Before spending any tokens, see whether this PR matches an auto-approve
+      # rule. Each RULE-*.md file in the standards repo defines glob patterns;
+      # a rule matches only if EVERY changed file in the PR matches one of its
+      # patterns (logical AND across the whole PR). If a rule matches we comment,
+      # approve, and exit successfully WITHOUT calling the LLM.
+      #
+      # This is where RULE-001 (Wiremock Stub Updates Only) short-circuits the
+      # pipeline for stub-only PRs.
+      # ---------------------------------------------------------------------
+      - name: Check auto-approve rules
+        id: auto_approve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          # Gather the list of files changed in this PR via the GitHub API.
+          gh pr view "$PR_NUMBER" --json files --jq '.files[].path' > changed_files.txt
+          echo "Changed files in PR #$PR_NUMBER:"
+          cat changed_files.txt
+
+          matched_rule=""
+
+          # Evaluate each rule file. The glob patterns for each rule live in the
+          # rule's Markdown body; the pipeline parses them out and tests every
+          # changed file against them. A rule passes only if NO changed file
+          # fails to match at least one of the rule's patterns.
+          for rule_file in .governance-standards/auto-approve-rules/RULE-*.md; do
+            [ -e "$rule_file" ] || continue
+            rule_id="$(basename "$rule_file" .md | cut -d- -f1-2)"
+            echo "Evaluating $rule_id ($rule_file)"
+
+            # --------------------------------------------------------------
+            # RULE MATCHING
+            # Extract the backtick-quoted glob patterns from the rule file and
+            # test that every changed file matches one of them. Implemented here
+            # in shell for transparency; a real deployment may prefer a small,
+            # tested matcher. The semantics MUST stay: all-files-match == pass.
+            # --------------------------------------------------------------
+            mapfile -t patterns < <(grep -oP '(?<=`)[^`]*\*\*[^`]*(?=`)' "$rule_file" || true)
+            if [ "${#patterns[@]}" -eq 0 ]; then
+              echo "  No patterns parsed from $rule_id; skipping."
+              continue
+            fi
+
+            all_match=true
+            while IFS= read -r file; do
+              [ -n "$file" ] || continue
+              file_matched=false
+              for pat in "${patterns[@]}"; do
+                # Use extglob-style matching against the path.
+                case "$file" in
+                  $pat) file_matched=true; break ;;
+                esac
+                # Fallback: match the '**' globs by stripping to a substring test.
+                core="${pat//\*\*\//}"; core="${core//\/\*\*/}"; core="${core//\*/}"
+                if [ -n "$core" ] && [[ "$file" == *"$core"* ]]; then
+                  file_matched=true; break
+                fi
+              done
+              if [ "$file_matched" = false ]; then
+                all_match=false
+                echo "  File '$file' does not match $rule_id; rule does not apply."
+                break
+              fi
+            done < changed_files.txt
+
+            if [ "$all_match" = true ]; then
+              matched_rule="$rule_id"
+              break
+            fi
+          done
+
+          if [ -n "$matched_rule" ]; then
+            echo "matched=$matched_rule" >> "$GITHUB_OUTPUT"
+            # Post a visible, auditable comment explaining the short-circuit.
+            gh pr comment "$PR_NUMBER" --body \
+              "✅ Auto-approved by **$matched_rule**. All changed files matched the rule's patterns, so no LLM evaluation was performed."
+            # Approve the PR on behalf of the pipeline.
+            gh pr review "$PR_NUMBER" --approve --body "Auto-approved by $matched_rule (no LLM evaluation performed)."
+            echo "Auto-approve rule $matched_rule matched; exiting successfully."
+          else
+            echo "matched=" >> "$GITHUB_OUTPUT"
+            echo "No auto-approve rule matched; proceeding to LLM evaluation."
+          fi
+
+      # Every step below is skipped when an auto-approve rule matched. This is
+      # the short-circuit: matched PRs never reach the evaluator.
+
+      # ---------------------------------------------------------------------
+      # Step 4 — Assemble the evaluator context.
+      # Gather everything the LLM needs: the PR diff, the concatenated standards,
+      # the prompt template, and the findings schema. All standards content is
+      # read from the PINNED ref checked out in Step 2.
+      # ---------------------------------------------------------------------
+      - name: Assemble evaluator context
+        if: steps.auto_approve.outputs.matched == ''
+        id: assemble
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          # 4a. Fetch the PR diff via the GitHub API.
+          gh pr diff "$PR_NUMBER" > pr.diff
+          echo "Captured PR diff ($(wc -l < pr.diff) lines)."
+
+          # 4b. Concatenate every standard so the evaluator sees them all.
+          cat .governance-standards/standards/STD-*.md > active_standards.md
+          echo "Concatenated $(ls .governance-standards/standards/STD-*.md | wc -l) standards."
+
+          # 4c. The prompt template that frames the evaluation.
+          cp .governance-standards/evaluator/pr-evaluation-prompt.md prompt_template.md
+
+          # 4d. The schema every emitted finding must conform to.
+          cp .governance-standards/findings-schema/finding.schema.json finding.schema.json
+
+          echo "Evaluator context assembled."
+
+      # ---------------------------------------------------------------------
+      # Step 5 — Call the LLM evaluator.
+      # The call itself lives in .github/scripts/evaluate.py so the logic is
+      # testable and reviewable on its own. The model is constrained with
+      # structured outputs to emit only the detection fields; the script stamps
+      # the audit metadata. See evaluator/COST-MODEL.md (in the standards repo)
+      # for the per-PR and monthly cost of each EVALUATOR_MODEL choice.
+      # ---------------------------------------------------------------------
+      - name: Set up Python
+        if: steps.auto_approve.outputs.matched == ''
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run LLM evaluation
+        if: steps.auto_approve.outputs.matched == ''
+        id: evaluate_llm
+        env:
+          # The provider key is stored provider-neutrally as the LLM_API_KEY
+          # secret and handed to the Anthropic SDK as ANTHROPIC_API_KEY. Swapping
+          # providers later means changing evaluate.py and this one line.
+          ANTHROPIC_API_KEY: ${{ secrets.LLM_API_KEY }}
+          # Model identifier. Defaults to the cheap demo model (Haiku 4.5, ~1-2c
+          # per PR) when the repo variable is unset. Flip vars.EVALUATOR_MODEL to
+          # claude-sonnet-4-6 or claude-opus-4-8 for sharper judgment in
+          # production — COST-MODEL.md quantifies exactly what that costs.
+          EVALUATOR_MODEL: ${{ vars.EVALUATOR_MODEL || 'claude-haiku-4-5' }}
+          # The pinned standards ref doubles as evaluatorVersion: it records which
+          # standards were active, making any past finding forensically replayable.
+          EVALUATOR_VERSION: ${{ env.STANDARDS_REF }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Official Anthropic SDK. For production, pin an exact version here so
+          # pipeline runs are reproducible; latest is fine for the demo.
+          pip install --quiet anthropic
+          # Reads prompt_template.md / pr.diff / active_standards.md from Step 4,
+          # writes a schema-conforming findings.json. Token usage is logged to
+          # stderr so real cost can be reconciled against COST-MODEL.md.
+          python .github/scripts/evaluate.py
+          echo "LLM evaluation complete; findings produced: $(jq 'length' findings.json)"
+
+      # ---------------------------------------------------------------------
+      # Step 6 + 7 — Parse findings and post them to the PR.
+      # For each finding: post a review comment on the file/line when a range is
+      # available, otherwise a general PR comment. The comment format tells the
+      # author how to dismiss the finding, which the pipeline can later honor by
+      # reading PR comments and setting disposition accordingly.
+      # ---------------------------------------------------------------------
+      - name: Post findings to PR
+        if: steps.auto_approve.outputs.matched == ''
+        id: post_findings
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          count="$(jq 'length' findings.json)"
+          echo "Parsed $count finding(s)."
+
+          # Compute severity rollups that later steps act on.
+          has_escalate="$(jq '[.[] | select(.severity == "escalate")] | length > 0' findings.json)"
+          has_required="$(jq '[.[] | select(.severity == "required")] | length > 0' findings.json)"
+          echo "has_escalate=$has_escalate" >> "$GITHUB_OUTPUT"
+          echo "has_required=$has_required" >> "$GITHUB_OUTPUT"
+
+          # Iterate findings and post each one.
+          jq -c '.[]' findings.json | while IFS= read -r finding; do
+            std_id="$(echo "$finding"   | jq -r '.standardId')"
+            severity="$(echo "$finding" | jq -r '.severity')"
+            desc="$(echo "$finding"     | jq -r '.description')"
+            file="$(echo "$finding"     | jq -r '.file // empty')"
+            start="$(echo "$finding"    | jq -r '.lineRange.start // empty')"
+
+            # Shared comment body. The DISMISS line gives the author a precise,
+            # machine-parseable way to dismiss a finding.
+            body="[$std_id] severity: $severity
+          $desc
+          To dismiss: add a PR comment in the format DISMISS $std_id: your reason here"
+
+            if [ -n "$file" ] && [ -n "$start" ]; then
+              # Inline review comment anchored to the file and line.
+              # The exact API call depends on your tooling; the GitHub REST
+              # "pulls/{n}/comments" endpoint takes path + line + body.
+              gh api \
+                --method POST \
+                "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" \
+                -f body="$body" -f path="$file" -F line="$start" \
+                -f commit_id="${{ github.event.pull_request.head.sha }}" \
+                -f side="RIGHT" || \
+                gh pr comment "$PR_NUMBER" --body "$body"
+            else
+              # No location available: fall back to a general PR comment.
+              gh pr comment "$PR_NUMBER" --body "$body"
+            fi
+          done
+
+      # ---------------------------------------------------------------------
+      # Step 8 — Escalation routing.
+      # If any finding is severity "escalate", request a review from the
+      # configured governance escalation team. Escalations need human judgment
+      # and must not be resolved by the pipeline alone.
+      # ---------------------------------------------------------------------
+      - name: Request escalation review
+        if: steps.auto_approve.outputs.matched == '' && steps.post_findings.outputs.has_escalate == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ESCALATION_TEAM: ${{ vars.GOVERNANCE_ESCALATION_TEAM }}
+        run: |
+          set -euo pipefail
+          echo "Escalate-severity finding present; requesting review from team @$ESCALATION_TEAM."
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/requested_reviewers" \
+            -f "team_reviewers[]=$ESCALATION_TEAM"
+
+      # ---------------------------------------------------------------------
+      # Step 9 — Set the workflow conclusion.
+      # Required or escalate findings fail the check, blocking merge until they
+      # are addressed or dismissed. Advisory-only findings pass: they are worth
+      # surfacing but should not block.
+      # ---------------------------------------------------------------------
+      - name: Enforce severity gate
+        if: steps.auto_approve.outputs.matched == ''
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.post_findings.outputs.has_escalate }}" = "true" ] || \
+             [ "${{ steps.post_findings.outputs.has_required }}" = "true" ]; then
+            echo "Blocking findings present (required and/or escalate). Failing the check."
+            exit 1
+          fi
+          echo "No blocking findings. Advisory-only or clean; passing the check."
+
+  # =========================================================================
+  # Step 10 — Persist findings to the audit log on merge.
+  #
+  # This runs only when commits land on main (i.e. the PR merged). It writes the
+  # findings array to audit-log/{prNumber}-{commitSha}.json, producing the
+  # durable forensic record. This is a separate job triggered by push so that it
+  # runs after the merge, not during PR evaluation.
+  #
+  # NOTE: the `on:` block above triggers on pull_request only. To enable this
+  # job, add a `push` trigger on `main` (kept out of the PR path deliberately so
+  # PR runs never write to the audit log). The logic is documented here so the
+  # full lifecycle is visible in one file.
+  # =========================================================================
+  # commit-audit-record:
+  #   if: github.ref == 'refs/heads/main'
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: write
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Write audit record
+  #       run: |
+  #         # Recompute or retrieve the findings for the merged PR, then:
+  #         #   cp findings.json "audit-log/${PR_NUMBER}-${COMMIT_SHA}.json"
+  #         # For auto-approved PRs, write the minimal rule-matched record instead.
+  #         git config user.name  "governance-pipeline"
+  #         git config user.email "governance-pipeline@users.noreply.github.com"
+  #         git add audit-log/
+  #         git commit -m "audit: record findings for PR #${PR_NUMBER} (${COMMIT_SHA})"
+  #         git push
