@@ -156,10 +156,16 @@ jobs:
           if [ -n "$matched_rule" ]; then
             echo "matched=$matched_rule" >> "$GITHUB_OUTPUT"
             # Post a visible, auditable comment explaining the short-circuit.
+            #
+            # We deliberately do NOT call `gh pr review --approve`: GitHub forbids
+            # the default GITHUB_TOKEN from formally approving pull requests
+            # ("GitHub Actions is not permitted to approve pull requests"). The
+            # passing green check this job exits with IS the merge signal that
+            # branch protection enforces — a formal review approval would be
+            # redundant. If you specifically need a formal approval, run this
+            # step with a GitHub App token or PAT instead of GITHUB_TOKEN.
             gh pr comment "$PR_NUMBER" --body \
-              "✅ Auto-approved by **$matched_rule**. All changed files matched the rule's patterns, so no LLM evaluation was performed."
-            # Approve the PR on behalf of the pipeline.
-            gh pr review "$PR_NUMBER" --approve --body "Auto-approved by $matched_rule (no LLM evaluation performed)."
+              "✅ Auto-approved by **$matched_rule**. All changed files matched the rule's patterns, so no LLM evaluation was performed. This passing check is the merge signal."
             echo "Auto-approve rule $matched_rule matched; exiting successfully."
           else
             echo "matched=" >> "$GITHUB_OUTPUT"
