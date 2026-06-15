@@ -28,3 +28,7 @@ shows the pipeline routing a change to humans rather than resolving it automatic
 The `audit-log` directory is written to by the pipeline at merge time. It is the forensic
 record of evaluated merges and must not be edited by hand. See `audit-log/README.md` for
 details on what the pipeline writes there.
+
+## Changelog
+
+- Clarified that the audit-log directory is written only by the pipeline.
