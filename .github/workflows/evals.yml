@@ -1,0 +1,80 @@
+# =============================================================================
+# evals.yml
+#
+# Evaluator regression gate. Runs the labeled fixture corpus in evals/ against the
+# real model and fails if behavior regresses versus evals/baseline.json. This is the
+# safety net for tuning: an FTE changing the prompt or a standard runs this and sees,
+# per standard, whether recall dropped or false positives rose before it ships.
+#
+# It does NOT run on every commit — only when the things that affect evaluator behavior
+# change (the fixtures, the evaluator script, or the harness), or on demand. The model
+# is pinned via EVALUATOR_MODEL so an upgrade is a deliberate, separately-reviewed event.
+#
+# Cross-repo note: the prompt and standards live in the standards repo, which by design
+# has no CI of its own. So a *standards-side* prompt change is validated by dispatching
+# this workflow with `standards_ref` set to the candidate ref before that ref is pinned.
+# =============================================================================
+
+name: Evaluator Regression
+
+on:
+  # Manual run — point it at any standards ref to test a candidate prompt/standards change.
+  workflow_dispatch:
+    inputs:
+      standards_ref:
+        description: "Standards ref to evaluate against (defaults to the pinned ref)"
+        required: false
+  # Automatic run when anything that shapes evaluator behavior changes in this repo.
+  pull_request:
+    paths:
+      - "evals/**"
+      - ".github/scripts/evaluate.py"
+      - ".github/scripts/run_evals.py"
+
+permissions:
+  contents: read
+  pull-requests: write   # to post the report on the PR
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v4
+
+      # The prompt + standards under test. Use the dispatch input if given, else the
+      # same pinned ref the production pipeline uses.
+      - name: Checkout governance standards
+        uses: actions/checkout@v4
+        with:
+          repository: weoamathior/poc-ai-governance-standards
+          ref: ${{ github.event.inputs.standards_ref || vars.GOVERNANCE_STANDARDS_REF }}
+          path: .governance-standards
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run the regression corpus
+        id: evals
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.LLM_API_KEY }}
+          EVALUATOR_MODEL: ${{ vars.EVALUATOR_MODEL || 'claude-haiku-4-5' }}
+        run: |
+          set -euo pipefail
+          pip install --quiet anthropic
+          # --live is the real test; --standards-dir points at the checked-out ref.
+          # Non-zero exit on any fixture failure or regression fails this job.
+          python .github/scripts/run_evals.py \
+            --live --standards-dir .governance-standards --out eval-report
+
+      # Always post the report — pass or fail — so the change author sees the deltas.
+      - name: Post report
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          [ -f eval-report.md ] && gh pr comment "$PR_NUMBER" --body-file eval-report.md || \
+            gh pr comment "$PR_NUMBER" --body "Evaluator regression run produced no report (the harness errored before scoring)."
