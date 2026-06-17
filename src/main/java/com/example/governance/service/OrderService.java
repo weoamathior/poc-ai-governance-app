@@ -20,4 +20,12 @@ public class OrderService {
     public List<Order> getOrdersForCustomer(String customerId) {
         return Collections.emptyList();
     }
+
+    public Order cancelOrder(Long id) {
+        Order order = getOrder(id);
+        if (order != null && !"SHIPPED".equals(order.getStatus())) {
+            order.setStatus("CANCELLED");
+        }
+        return order;
+    }
 }
