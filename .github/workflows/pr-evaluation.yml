@@ -38,6 +38,7 @@ permissions:
   contents: read
   pull-requests: write
   checks: write
+  statuses: write   # to set the mutable governance/gate commit status
 
 # Pin the standards ref once here so every step references the same value and
 # the forensic guarantee holds across the whole run.
@@ -166,6 +167,13 @@ jobs:
             # step with a GitHub App token or PAT instead of GITHUB_TOKEN.
             gh pr comment "$PR_NUMBER" --body \
               "✅ Auto-approved by **$matched_rule**. All changed files matched the rule's patterns, so no LLM evaluation was performed. This passing check is the merge signal."
+            # Set the merge gate green. governance/gate is the mutable status both this
+            # workflow and the dismissal workflow write; branch protection (when enabled)
+            # requires it rather than the job conclusion.
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/statuses/${{ github.event.pull_request.head.sha }}" \
+              -f state=success -f context=governance/gate \
+              -f "description=auto-approved by $matched_rule (no LLM evaluation)"
             echo "Auto-approve rule $matched_rule matched; exiting successfully."
           else
             echo "matched=" >> "$GITHUB_OUTPUT"
@@ -326,21 +334,28 @@ jobs:
             -f "team_reviewers[]=$ESCALATION_TEAM"
 
       # ---------------------------------------------------------------------
-      # Step 9 — Set the workflow conclusion.
-      # Required or escalate findings fail the check, blocking merge until they
-      # are addressed or dismissed. Advisory-only findings pass: they are worth
-      # surfacing but should not block.
+      # Step 9 — Publish governance state (sticky comment + mutable gate).
+      # Writes the canonical findings into a single sticky PR comment, carries
+      # forward any prior dismissal whose stableKey still matches a current finding
+      # (so a dismissal survives a re-evaluation while the offending content is
+      # unchanged), and sets the governance/gate commit status.
+      #
+      # The gate is a STATUS, not this job's exit code: a comment-triggered
+      # dismissal workflow cannot change a job's pass/fail, but it can re-set a
+      # status. Branch protection (when enabled) requires governance/gate rather
+      # than this job. required/escalate open findings -> failure; otherwise success.
       # ---------------------------------------------------------------------
-      - name: Enforce severity gate
+      - name: Publish governance state
         if: steps.auto_approve.outputs.matched == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [ "${{ steps.post_findings.outputs.has_escalate }}" = "true" ] || \
-             [ "${{ steps.post_findings.outputs.has_required }}" = "true" ]; then
-            echo "Blocking findings present (required and/or escalate). Failing the check."
-            exit 1
-          fi
-          echo "No blocking findings. Advisory-only or clean; passing the check."
+          python .github/scripts/governance_state.py publish \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --findings findings.json \
+            --target-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   # =========================================================================
   # Step 10 — Persist findings to the audit log on merge.

@@ -1,0 +1,84 @@
+# =============================================================================
+# dismiss-finding.yml
+#
+# Honors a `DISMISS STD-XXX: reason` comment on a PR by marking the matching open
+# finding(s) dismissed in the sticky governance comment and re-setting the
+# governance/gate status. This is the consumer half of the dismissal loop; the
+# evaluation workflow (pr-evaluation.yml) is the producer.
+#
+# issue_comment workflows always run from the DEFAULT BRANCH, so this file and
+# .github/scripts/governance_state.py must be on the default branch to take effect.
+#
+# ⚠️ Security: issue_comment runs with the base repo's privileged token even for
+# comments on fork PRs. The authority check below is therefore load-bearing, not
+# optional — it is what stops an arbitrary commenter from waving off a finding.
+# =============================================================================
+
+name: Dismiss Finding
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write   # rewrite the sticky comment, post the confirmation
+  statuses: write        # re-set governance/gate
+  contents: read
+
+jobs:
+  dismiss:
+    # Only run for PR comments that look like a dismissal, and never react to our
+    # own bot comments (the sticky comment / confirmations would otherwise re-trigger).
+    if: >
+      github.event.issue.pull_request &&
+      github.event.comment.user.type != 'Bot' &&
+      startsWith(github.event.comment.body, 'DISMISS ')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (default branch — for governance_state.py)
+        uses: actions/checkout@v4
+
+      - name: Authorize, parse, and dismiss
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.comment.user.login }}
+          OWNER: ${{ github.repository_owner }}
+          # Passed via env (never interpolated into the script) to avoid comment
+          # content being executed as shell.
+          BODY: ${{ github.event.comment.body }}
+          EVALUATOR_VERSION: ${{ vars.GOVERNANCE_STANDARDS_REF }}
+        run: |
+          set -euo pipefail
+
+          # --- Authority check (POC STUB) -------------------------------------
+          # TODO(operational): replace owner-only with the tiered team-membership
+          # model from DISMISSAL-GOVERNANCE.md — tech-leads may dismiss advisory and
+          # required, fte-codeowners may dismiss escalate — resolved via
+          #   GET /orgs/{org}/teams/{slug}/memberships/{user}
+          # That requires the repos to live under an org (a personal account has no
+          # teams). Until then, only the repository owner may dismiss.
+          if [ "$ACTOR" != "$OWNER" ]; then
+            gh pr comment "$PR" --body "⛔ @$ACTOR is not authorized to dismiss governance findings (POC stub: owner only)."
+            echo "unauthorized actor: $ACTOR"; exit 0
+          fi
+
+          # --- Parse: DISMISS STD-XXX [optional/path] : reason ----------------
+          line="$(printf '%s' "$BODY" | head -1)"
+          if [[ "$line" =~ ^DISMISS[[:space:]]+(STD-[0-9]{3})([[:space:]]+([^:[:space:]]+))?[[:space:]]*:[[:space:]]*(.+)$ ]]; then
+            STD="${BASH_REMATCH[1]}"
+            FILE="${BASH_REMATCH[3]}"
+            REASON="${BASH_REMATCH[4]}"
+          else
+            gh pr comment "$PR" --body "⚠️ Couldn't parse that dismissal. Use: \`DISMISS STD-XXX: your reason\` (optionally \`DISMISS STD-XXX path/to/file: reason\`)."
+            echo "parse failed for: $line"; exit 0
+          fi
+
+          # Resolve the CURRENT PR head SHA so the gate is set on the live commit,
+          # not on a possibly-stale SHA stored in the sticky comment.
+          HEAD_SHA="$(gh pr view "$PR" --json headRefOid -q .headRefOid)"
+
+          # --- Apply via the shared governance-state module -------------------
+          ARGS=(--pr "$PR" --sha "$HEAD_SHA" --standard "$STD" --reason "$REASON" --actor "$ACTOR" --role "repo-owner (POC stub)")
+          if [ -n "${FILE:-}" ]; then ARGS+=(--file "$FILE"); fi
+          python3 .github/scripts/governance_state.py dismiss "${ARGS[@]}"

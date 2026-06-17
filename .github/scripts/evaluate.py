@@ -26,6 +26,7 @@ Design notes:
 """
 
 import datetime
+import hashlib
 import json
 import os
 import sys
@@ -41,6 +42,43 @@ SEVERITIES = ["advisory", "required", "escalate"]
 def read(path):
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def added_lines_by_file(diff_text):
+    """Map each changed file to the text of its added (+) diff lines.
+
+    Used to give each finding a content-based stableKey, so a dismissal carries
+    forward across pushes only while the offending file's added content is unchanged.
+    """
+    added, cur = {}, None
+    for line in diff_text.splitlines():
+        if line.startswith("+++ "):
+            path = line[4:].strip()
+            if path.startswith("b/"):
+                path = path[2:]
+            cur = None if path == "/dev/null" else path
+            if cur is not None:
+                added.setdefault(cur, [])
+        elif line.startswith("+") and not line.startswith("+++") and cur is not None:
+            added.setdefault(cur, []).append(line[1:])
+    return {k: "\n".join(v) for k, v in added.items()}
+
+
+def stable_key(standard_id, file, added_by_file):
+    """Content-addressed identity for a finding, stable across unrelated pushes.
+
+    Deliberately hashes the whole file's added lines rather than the finding's
+    specific line range. This keeps carry-forward robust to LLM line-number jitter
+    (the reported lineRange varies run-to-run), at the cost of one limitation: two
+    findings of the SAME standard in the SAME file share a key, so dismissing or
+    carrying one carries both. That is an acceptable trade — the dismissal UX already
+    coalesces by standard+file — and is preferred over a line-range key that would
+    break carry-forward whenever unrelated edits shift line numbers.
+    """
+    snippet = added_by_file.get(file, "") if file else ""
+    digest = hashlib.sha256()
+    digest.update((standard_id + "\0" + (file or "") + "\0" + snippet).encode("utf-8"))
+    return digest.hexdigest()
 
 
 def detection_schema():
@@ -121,8 +159,10 @@ def main():
     detected = json.loads(raw)["findings"]
 
     # Stamp the audit metadata the pipeline owns, producing full
-    # finding.schema.json-conforming records.
+    # finding.schema.json-conforming records, plus a content-based stableKey used
+    # for dismissal carry-forward across pushes.
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    added = added_lines_by_file(pr_diff)
     findings = [
         {
             "findingId": str(uuid.uuid4()),
@@ -138,6 +178,7 @@ def main():
             "timestamp": now,
             "prNumber": pr_number,
             "commitSha": commit_sha,
+            "stableKey": stable_key(d["standardId"], d["file"], added),
         }
         for d in detected
     ]
