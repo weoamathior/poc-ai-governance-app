@@ -25,6 +25,7 @@ public class OrderService {
         Order order = getOrder(id);
         if (order != null && !"SHIPPED".equals(order.getStatus())) {
             order.setStatus("CANCELLED");
+            order.setQuantity(0);
         }
         return order;
     }
