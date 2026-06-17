@@ -3,6 +3,7 @@ package com.example.governance;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+// Unrelated tweak to test dismissal carry-forward.
 @SpringBootApplication
 public class Application {
 
