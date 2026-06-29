@@ -358,32 +358,10 @@ jobs:
             --target-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   # =========================================================================
-  # Step 10 — Persist findings to the audit log on merge.
-  #
-  # This runs only when commits land on main (i.e. the PR merged). It writes the
-  # findings array to audit-log/{prNumber}-{commitSha}.json, producing the
-  # durable forensic record. This is a separate job triggered by push so that it
-  # runs after the merge, not during PR evaluation.
-  #
-  # NOTE: the `on:` block above triggers on pull_request only. To enable this
-  # job, add a `push` trigger on `main` (kept out of the PR path deliberately so
-  # PR runs never write to the audit log). The logic is documented here so the
-  # full lifecycle is visible in one file.
+  # The merge-time audit record (audit-log/{prNumber}-{mergeSha}.json) is written
+  # by a SEPARATE workflow, .github/workflows/audit-log.yml, which triggers on
+  # pull_request[closed] when the PR was merged. It reads the final post-dismissal
+  # findings from the sticky governance comment this workflow maintains. It lives in
+  # its own file because it runs at a different point in the lifecycle (merge, not
+  # evaluation) and must not re-fire on its own commit.
   # =========================================================================
-  # commit-audit-record:
-  #   if: github.ref == 'refs/heads/main'
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: write
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Write audit record
-  #       run: |
-  #         # Recompute or retrieve the findings for the merged PR, then:
-  #         #   cp findings.json "audit-log/${PR_NUMBER}-${COMMIT_SHA}.json"
-  #         # For auto-approved PRs, write the minimal rule-matched record instead.
-  #         git config user.name  "governance-pipeline"
-  #         git config user.email "governance-pipeline@users.noreply.github.com"
-  #         git add audit-log/
-  #         git commit -m "audit: record findings for PR #${PR_NUMBER} (${COMMIT_SHA})"
-  #         git push

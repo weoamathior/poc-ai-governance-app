@@ -1,0 +1,73 @@
+# =============================================================================
+# audit-log.yml
+#
+# At merge time, write the durable governance audit record for the PR to
+# audit-log/{prNumber}-{mergeSha}.json and commit it to the default branch.
+#
+# Triggers on `pull_request: [closed]` (gated to merged PRs) rather than on a push
+# to the default branch. That matters: a push trigger would re-fire on the audit
+# commit itself, looping. A pull_request[closed] event is not re-fired by the audit
+# commit, and it hands us the PR number and merge SHA directly — no commit→PR
+# reverse lookup needed.
+#
+# The record's findings are read from the PR's sticky governance comment, so they
+# reflect the final post-dismissal state (what was open, what was dismissed and by
+# whom) at merge.
+# =============================================================================
+
+name: Audit Log
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write   # commit the audit record to the default branch
+
+jobs:
+  record:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build audit record from the sticky comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/audit_record.py \
+            --pr "${{ github.event.pull_request.number }}" \
+            --merge-sha "${{ github.event.pull_request.merge_commit_sha }}" \
+            --merged-at "${{ github.event.pull_request.merged_at }}"
+
+      - name: Commit the record
+        run: |
+          set -euo pipefail
+          git config user.name  "governance-pipeline"
+          git config user.email "governance-pipeline@users.noreply.github.com"
+          git add audit-log/
+          if git diff --cached --quiet; then
+            echo "No audit record to commit."
+            exit 0
+          fi
+          git commit -m "audit: PR #${{ github.event.pull_request.number }} (${{ github.event.pull_request.merge_commit_sha }})"
+          # Records have unique filenames ({pr}-{sha}.json), so a rebase onto a
+          # concurrently-merged PR's commit never conflicts — retry to absorb races.
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${{ github.event.repository.default_branch }}"; then
+              echo "pushed audit record"; exit 0
+            fi
+            git fetch origin "${{ github.event.repository.default_branch }}"
+            git rebase "origin/${{ github.event.repository.default_branch }}"
+          done
+          echo "failed to push audit record after retries" >&2
+          exit 1

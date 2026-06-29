@@ -1,15 +1,20 @@
 # Audit Log
 
-This directory is written to by the `pr-evaluation` pipeline at merge time. It is not
-maintained by hand, and it must not be edited manually. Treat everything in this directory
-as a forensic record produced by automation.
+This directory is written to by the `audit-log` workflow at merge time (it runs on
+`pull_request[closed]` for merged PRs). It is not maintained by hand, and it must not be
+edited manually. Treat everything in this directory as a forensic record produced by
+automation.
 
-When a pull request that was evaluated by the pipeline is merged, the pipeline writes a
-JSON file named `{prNumber}-{commitSha}.json`. For an evaluated pull request, that file
-contains an array of findings, each conforming to the finding schema defined in
-`poc-ai-governance-standards/findings-schema/finding.schema.json`. The findings capture
-what the evaluator observed, the severity of each observation, and how each was ultimately
-disposed.
+When a pull request that was evaluated by the pipeline is merged, the workflow writes a
+JSON file named `{prNumber}-{mergeSha}.json`. The record is an object carrying the merge
+metadata (`prNumber`, `mergeCommitSha`, `mergedAt`, `recordedAt`) and a `findings` array.
+Those findings are read from the pull request's sticky governance comment, so they are the
+**final, post-dismissal** state: each finding conforms to the finding schema in
+`poc-ai-governance-standards/findings-schema/finding.schema.json`, carries its
+`evaluatorVersion` (the pinned standards ref active at evaluation), and — for any finding
+that was dismissed — carries the dismissal provenance (who dismissed it, in what role, why,
+and when). The record therefore captures not just what the evaluator observed, but how each
+observation was ultimately disposed and on whose authority.
 
 Pull requests that were auto-approved are recorded too, but more briefly. For an
 auto-approved merge, the pipeline writes a minimal record noting which auto-approve rule
