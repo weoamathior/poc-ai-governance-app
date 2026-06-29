@@ -45,4 +45,13 @@ public class OrderService {
         return order;
     }
 
+
+    public Order splitOrder(Long id, int firstQty) {
+        Order order = getOrder(id);
+        if (order != null && firstQty > 0 && firstQty < order.getQuantity()) {
+            order.setStatus("SPLIT");
+        }
+        return order;
+    }
+
 }
