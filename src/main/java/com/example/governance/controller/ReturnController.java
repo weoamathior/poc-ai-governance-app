@@ -11,8 +11,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-// AI-ASSISTED: Generated with GitHub Copilot. Reviewed by [engineer].
-// Generates standard CRUD controller delegating to ReturnService.
 @RestController
 @RequestMapping("/returns")
 public class ReturnController {
