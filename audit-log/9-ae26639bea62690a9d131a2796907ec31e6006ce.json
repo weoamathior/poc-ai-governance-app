@@ -1,0 +1,55 @@
+{
+  "prNumber": 9,
+  "mergeCommitSha": "ae26639bea62690a9d131a2796907ec31e6006ce",
+  "mergedAt": "2026-06-29T11:34:11Z",
+  "recordedAt": "2026-06-29T11:34:20.228583+00:00",
+  "evaluated": true,
+  "findings": [
+    {
+      "findingId": "14c2eba0-e31c-477b-8b29-318bf9dc3a12",
+      "standardId": "STD-001",
+      "severity": "required",
+      "file": "src/main/java/com/example/governance/service/OrderService.java",
+      "lineRange": {
+        "start": 31,
+        "end": 39
+      },
+      "description": "Method refundOrder contains business logic (conditional check and state modification) but lacks a provenance comment indicating AI-assisted code generation.",
+      "disposition": "dismissed",
+      "dismissalReason": "provenance to be added in the controller refactor (TICKET-5678)",
+      "evaluatorModel": "claude-haiku-4-5",
+      "evaluatorVersion": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d",
+      "timestamp": "2026-06-29T11:31:38.326165+00:00",
+      "prNumber": 9,
+      "commitSha": "b21f382a506f88e48430fa36a4393a7e96cb3153",
+      "stableKey": "5cd717292899869f0e0ef2d632a170f4a272a1c0f987e4a8541cf22ab4d8b180",
+      "dismissal": {
+        "dismissedBy": "weoamathior",
+        "dismisserRole": "repo-owner (POC stub)",
+        "reason": "provenance to be added in the controller refactor (TICKET-5678)",
+        "timestamp": "2026-06-29T11:31:55.044615+00:00",
+        "atCommitSha": "b21f382a506f88e48430fa36a4393a7e96cb3153",
+        "standardsRef": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d"
+      }
+    },
+    {
+      "findingId": "480bb366-8979-45da-b872-6d516f60d4d0",
+      "standardId": "STD-002",
+      "severity": "advisory",
+      "file": "src/main/java/com/example/governance/service/OrderService.java",
+      "lineRange": {
+        "start": 31,
+        "end": 39
+      },
+      "description": "New service-layer method refundOrder was added without any accompanying test changes in the pull request.",
+      "disposition": "open",
+      "dismissalReason": null,
+      "evaluatorModel": "claude-haiku-4-5",
+      "evaluatorVersion": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d",
+      "timestamp": "2026-06-29T11:31:38.326165+00:00",
+      "prNumber": 9,
+      "commitSha": "b21f382a506f88e48430fa36a4393a7e96cb3153",
+      "stableKey": "3eba0283dfe8f0bbca052f7e2e1124101609d4b96c7405a5b9878fb4672c3c69"
+    }
+  ]
+}

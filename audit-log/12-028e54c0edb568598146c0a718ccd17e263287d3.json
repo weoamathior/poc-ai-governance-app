@@ -1,0 +1,55 @@
+{
+  "prNumber": 12,
+  "mergeCommitSha": "028e54c0edb568598146c0a718ccd17e263287d3",
+  "mergedAt": "2026-06-29T19:22:25Z",
+  "recordedAt": "2026-06-29T19:39:25.368062+00:00",
+  "evaluated": true,
+  "findings": [
+    {
+      "findingId": "18d14d1a-26a9-4724-8c02-8e66dc81f8bc",
+      "standardId": "STD-001",
+      "severity": "required",
+      "file": "src/main/java/com/example/governance/service/OrderService.java",
+      "lineRange": {
+        "start": 39,
+        "end": 46
+      },
+      "description": "Method applyLoyaltyDiscount contains business logic (conditionals and state modification) but lacks a provenance comment indicating AI-assisted generation.",
+      "disposition": "dismissed",
+      "dismissalReason": "demonstration",
+      "evaluatorModel": "claude-haiku-4-5",
+      "evaluatorVersion": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d",
+      "timestamp": "2026-06-29T18:12:03.642898+00:00",
+      "prNumber": 12,
+      "commitSha": "6066de983b67815cc7c414127a4b0b0b6fb2a440",
+      "stableKey": "ed515ad7c79b4280707344ca46865783ad835f6e9267c54942f4b7e8fb42fd80",
+      "dismissal": {
+        "dismissedBy": "weoamathior",
+        "dismisserRole": "repo-owner (POC stub)",
+        "reason": "demonstration",
+        "timestamp": "2026-06-29T19:21:57.733858+00:00",
+        "atCommitSha": "6066de983b67815cc7c414127a4b0b0b6fb2a440",
+        "standardsRef": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d"
+      }
+    },
+    {
+      "findingId": "4d8a2ab5-271b-4106-a33f-2a85d4ac3e1d",
+      "standardId": "STD-002",
+      "severity": "advisory",
+      "file": "src/main/java/com/example/governance/service/OrderService.java",
+      "lineRange": {
+        "start": 39,
+        "end": 46
+      },
+      "description": "New service-layer method applyLoyaltyDiscount was added but no test file was added or modified in this pull request.",
+      "disposition": "open",
+      "dismissalReason": null,
+      "evaluatorModel": "claude-haiku-4-5",
+      "evaluatorVersion": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d",
+      "timestamp": "2026-06-29T18:12:03.642898+00:00",
+      "prNumber": 12,
+      "commitSha": "6066de983b67815cc7c414127a4b0b0b6fb2a440",
+      "stableKey": "7c254c666fe85dc24d635df240a6c994e03e63b5c33ffcb45ca2f0a7b7141230"
+    }
+  ]
+}
