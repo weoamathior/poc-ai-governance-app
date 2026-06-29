@@ -28,4 +28,12 @@ public class OrderService {
         }
         return order;
     }
+
+    public Order refundOrder(Long id, int amount) {
+        Order order = getOrder(id);
+        if (order != null && amount > 0) {
+            order.setStatus("REFUNDED");
+        }
+        return order;
+    }
 }
