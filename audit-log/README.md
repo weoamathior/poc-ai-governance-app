@@ -1,9 +1,15 @@
 # Audit Log
 
-This directory is written to by the `audit-log` workflow at merge time (it runs on
-`pull_request[closed]` for merged PRs). It is not maintained by hand, and it must not be
-edited manually. Treat everything in this directory as a forensic record produced by
-automation.
+The governance audit records live on a dedicated **`governance-audit`** branch, not on the
+default branch. They are written there by the `audit-log` workflow at merge time (it runs
+on `pull_request[closed]` for merged PRs). The records are kept off the default branch on
+purpose: that branch is protected by the required `governance/gate` check, which rejects
+any direct push — and the audit ledger is conceptually separate from code anyway, an
+append-only record on its own branch. To read the records, check out `governance-audit`.
+
+This README is the only thing about the audit log that lives on the default branch. The
+records themselves are not maintained by hand and must not be edited manually — treat them
+as a forensic record produced by automation.
 
 When a pull request that was evaluated by the pipeline is merged, the workflow writes a
 JSON file named `{prNumber}-{mergeSha}.json`. The record is an object carrying the merge
