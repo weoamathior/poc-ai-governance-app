@@ -36,4 +36,13 @@ public class OrderService {
         }
         return order;
     }
+
+    public Order expediteOrder(Long id) {
+        Order order = getOrder(id);
+        if (order != null && "NEW".equals(order.getStatus())) {
+            order.setStatus("EXPEDITED");
+        }
+        return order;
+    }
+
 }
