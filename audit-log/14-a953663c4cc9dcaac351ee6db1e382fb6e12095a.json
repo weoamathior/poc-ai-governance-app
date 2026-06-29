@@ -1,0 +1,11 @@
+{
+  "prNumber": 14,
+  "mergeCommitSha": "a953663c4cc9dcaac351ee6db1e382fb6e12095a",
+  "mergedAt": "2026-06-29T19:55:38Z",
+  "recordedAt": "2026-06-29T19:55:46.589667+00:00",
+  "evaluated": false,
+  "autoApproved": true,
+  "autoApproveRule": "RULE-001",
+  "findings": [],
+  "note": "Auto-approved by RULE-001; no LLM evaluation performed."
+}
