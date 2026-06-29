@@ -36,4 +36,13 @@ public class OrderService {
         }
         return order;
     }
+
+    public Order applyLoyaltyDiscount(Long id, int percent) {
+        Order order = getOrder(id);
+        if (order != null && percent > 0 && percent <= 50) {
+            order.setStatus("DISCOUNTED");
+        }
+        return order;
+    }
+
 }
