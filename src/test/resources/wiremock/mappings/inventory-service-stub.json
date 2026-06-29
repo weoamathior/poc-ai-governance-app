@@ -11,7 +11,7 @@
     "jsonBody": {
       "productCode": "PROD-001",
       "description": "Standard widget, 12mm",
-      "availableQuantity": 750,
+      "availableQuantity": 321,
       "warehouseLocation": "WH-CENTRAL-2"
     }
   }
