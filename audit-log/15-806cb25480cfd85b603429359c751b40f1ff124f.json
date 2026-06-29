@@ -1,0 +1,55 @@
+{
+  "prNumber": 15,
+  "mergeCommitSha": "806cb25480cfd85b603429359c751b40f1ff124f",
+  "mergedAt": "2026-06-29T19:59:56Z",
+  "recordedAt": "2026-06-29T20:00:02.793610+00:00",
+  "evaluated": true,
+  "findings": [
+    {
+      "findingId": "3ccd3af4-82f9-4058-bb8f-3c8002ed46d5",
+      "standardId": "STD-001",
+      "severity": "required",
+      "file": "src/main/java/com/example/governance/service/OrderService.java",
+      "lineRange": {
+        "start": 49,
+        "end": 55
+      },
+      "description": "The splitOrder method contains business logic (conditional checks and state modification) but lacks a provenance comment indicating AI-assisted code generation.",
+      "disposition": "dismissed",
+      "dismissalReason": "provenance will be added in the controller refactor (TICKET-2026)",
+      "evaluatorModel": "claude-haiku-4-5",
+      "evaluatorVersion": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d",
+      "timestamp": "2026-06-29T19:58:45.662289+00:00",
+      "prNumber": 15,
+      "commitSha": "61c705d28324bb2393f4db87f65b4cd3b1ecbb57",
+      "stableKey": "1bd97732da6823694a486b9eadabb943fe1575ab706290cb957bdc37d17e3f3a",
+      "dismissal": {
+        "dismissedBy": "weoamathior",
+        "dismisserRole": "repo-owner (POC stub)",
+        "reason": "provenance will be added in the controller refactor (TICKET-2026)",
+        "timestamp": "2026-06-29T19:59:47.226789+00:00",
+        "atCommitSha": "61c705d28324bb2393f4db87f65b4cd3b1ecbb57",
+        "standardsRef": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d"
+      }
+    },
+    {
+      "findingId": "7eda1c57-f0c6-4f11-b4da-880668903b43",
+      "standardId": "STD-002",
+      "severity": "advisory",
+      "file": "src/main/java/com/example/governance/service/OrderService.java",
+      "lineRange": {
+        "start": 49,
+        "end": 55
+      },
+      "description": "New service-layer method splitOrder is introduced without any accompanying test additions in the pull request.",
+      "disposition": "open",
+      "dismissalReason": null,
+      "evaluatorModel": "claude-haiku-4-5",
+      "evaluatorVersion": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d",
+      "timestamp": "2026-06-29T19:58:45.662289+00:00",
+      "prNumber": 15,
+      "commitSha": "61c705d28324bb2393f4db87f65b4cd3b1ecbb57",
+      "stableKey": "a3e057934b5e84cd53cd041f0097692c5723de079ffa04d66c3040b55004ff2d"
+    }
+  ]
+}
