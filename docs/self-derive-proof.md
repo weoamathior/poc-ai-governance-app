@@ -1,1 +1,1 @@
-probe env vars re-run 3
+config-driven engine pin re-run 4
