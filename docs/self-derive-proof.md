@@ -1,1 +1,1 @@
-Live proof that the rename-safe engine self-derives its checkout from job_workflow_ref.
+Live proof of self-derive checkout. Re-run 2 with debug+guard.
