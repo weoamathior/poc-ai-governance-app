@@ -54,4 +54,13 @@ public class OrderService {
         return order;
     }
 
+
+    public Order archiveOrder(Long id) {
+        Order order = getOrder(id);
+        if (order != null && "DELIVERED".equals(order.getStatus())) {
+            order.setStatus("ARCHIVED");
+        }
+        return order;
+    }
+
 }
