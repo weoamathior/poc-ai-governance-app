@@ -1,0 +1,26 @@
+# The ENTIRE governance footprint for this product repo: a thin caller into the central
+# engine (governance-ci, pinned @v1). No scripts, no logic. Config (LLM_API_KEY secret,
+# EVALUATOR_MODEL / GOVERNANCE_STANDARDS_REF vars) comes from repo/org via secrets: inherit.
+name: AI Governance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  issue_comment:
+    types: [created]
+
+jobs:
+  evaluate:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    uses: weoamathior/governance-ci/.github/workflows/pr-evaluation.yml@v1
+    secrets: inherit
+
+  dismiss:
+    if: github.event_name == 'issue_comment'
+    uses: weoamathior/governance-ci/.github/workflows/dismiss-finding.yml@v1
+    secrets: inherit
+
+  audit:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    uses: weoamathior/governance-ci/.github/workflows/audit-log.yml@v1
+    secrets: inherit
