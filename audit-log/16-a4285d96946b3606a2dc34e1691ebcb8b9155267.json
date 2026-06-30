@@ -1,0 +1,55 @@
+{
+  "prNumber": 16,
+  "mergeCommitSha": "a4285d96946b3606a2dc34e1691ebcb8b9155267",
+  "mergedAt": "2026-06-30T17:46:38Z",
+  "recordedAt": "2026-06-30T17:46:46.376881+00:00",
+  "evaluated": true,
+  "findings": [
+    {
+      "findingId": "d3700e63-02d2-47f7-8833-ee9ccccb0daa",
+      "standardId": "STD-001",
+      "severity": "required",
+      "file": "src/main/java/com/example/governance/service/OrderService.java",
+      "lineRange": {
+        "start": 57,
+        "end": 64
+      },
+      "description": "Method archiveOrder contains business logic (conditional status check and state mutation) but lacks a provenance comment indicating AI-generated code.",
+      "disposition": "dismissed",
+      "dismissalReason": "provenance added in follow-up (TICKET-7777)",
+      "evaluatorModel": "claude-haiku-4-5",
+      "evaluatorVersion": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d",
+      "timestamp": "2026-06-30T16:20:50.973902+00:00",
+      "prNumber": 16,
+      "commitSha": "a19ff446f0e43074c8c1e4773f493748d0b6e924",
+      "stableKey": "19e74f057a1463eb3912095c6d8f839689b19e230e225bac4c0dc9ec390b5b91",
+      "dismissal": {
+        "dismissedBy": "weoamathior",
+        "dismisserRole": "repo-owner (POC stub)",
+        "reason": "provenance added in follow-up (TICKET-7777)",
+        "timestamp": "2026-06-30T17:46:02.252467+00:00",
+        "atCommitSha": "a19ff446f0e43074c8c1e4773f493748d0b6e924",
+        "standardsRef": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d"
+      }
+    },
+    {
+      "findingId": "57ddd2bb-37b8-4054-8105-63ed19bf884f",
+      "standardId": "STD-002",
+      "severity": "advisory",
+      "file": "src/main/java/com/example/governance/service/OrderService.java",
+      "lineRange": {
+        "start": 57,
+        "end": 64
+      },
+      "description": "New service-layer method archiveOrder was added but no test file modifications appear in this pull request.",
+      "disposition": "open",
+      "dismissalReason": null,
+      "evaluatorModel": "claude-haiku-4-5",
+      "evaluatorVersion": "a3ebc9f8bf070be9fc8f7e1e7da3655abd00bb9d",
+      "timestamp": "2026-06-30T16:20:50.973902+00:00",
+      "prNumber": 16,
+      "commitSha": "a19ff446f0e43074c8c1e4773f493748d0b6e924",
+      "stableKey": "b39c859dc24cdd5e3f6104569d0f90ca798b76ae0891491665721cddb5b43f48"
+    }
+  ]
+}
